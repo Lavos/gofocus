@@ -27,7 +27,7 @@ var (
 	config_filename = flag.String("c", "", "filename of json configuration file")
 )
 
-func color_line (y int, bg termbox.Attribute) {
+func color_hline (y int, bg termbox.Attribute) {
 	var width, _ = termbox.Size()
 
 	for c := 0; c < width; c++ {
@@ -35,32 +35,66 @@ func color_line (y int, bg termbox.Attribute) {
 	}
 }
 
-func print_tb (x, y int, fg, bg termbox.Attribute, msg string) {
-	var width, _ = termbox.Size()
-	var clean string
+func print_wordwrap (msg string, width, x int) {
+	working := make([]byte, 0)
+	lines := make([][]byte, 0)
 
-	clean = strings.Replace(msg, "\n", "", -1)
+	working = append(working, msg...)
 
-	for _, c := range clean {
-		if x >= width {
-			x = 0
-			y++
+work:
+	for len(working) != 0 {
+
+		// if the width is less than a line, no problem!
+		if len(working) <= width {
+			lines = append(lines, working)
+			working = working[len(working):]
+
+			continue;
 		}
 
-		termbox.SetCell(x, y, c, fg, bg)
-		x++
+		// find the space closest to the end, and split there
+		for xw := width; xw != 0; xw-- {
+			if working[xw] == 0x20 {
+				lines = append(lines, working[:xw])
+				working = working[xw+1:]
+				continue work;
+			}
+		}
+
+		// didn't find any spaces to split on, so just split at width
+		lines = append(lines, working[:width])
+		working = working[width:]
+	}
+
+	for index, line := range lines {
+		print_line(1, index+x, termbox.ColorWhite, termbox.ColorDefault, string(line))
 	}
 }
 
+func print_line (x, y int, fg, bg termbox.Attribute, msg string) {
+	var clean string = strings.Replace(msg, "\n", "", -1)
+
+	for _, c := range clean {
+		termbox.SetCell(x, y, c, fg, bg)
+		x++
+	}
+
+	// termbox.Flush()
+}
+
 func drawScreen () {
+	var remaining int = 0
 	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 	defer termbox.Flush()
 
 	// title line
-	color_line(0, termbox.ColorWhite)
-	print_tb(1, 0, termbox.ColorBlack, termbox.ColorWhite, "Go Focus")
+	color_hline(0, termbox.ColorWhite)
+	print_line(1, 0, termbox.ColorBlack, termbox.ColorWhite, "Go Focus")
 
-	remaining := len(tweet_list) - position
+	if len(tweet_list) != 0 {
+		remaining = len(tweet_list) - position - 1
+	}
+
 	var bar_color termbox.Attribute
 
 	if remaining == 0 {
@@ -70,8 +104,8 @@ func drawScreen () {
 	}
 
 	// status line
-	color_line(1, bar_color)
-	print_tb(1, 1, termbox.ColorBlack, bar_color, fmt.Sprintf("%v tweets remaining.", remaining))
+	color_hline(1, bar_color)
+	print_line(1, 1, termbox.ColorBlack, bar_color, fmt.Sprintf("%v tweets remaining. [%v/%v]", remaining, position, len(tweet_list)-1))
 
 	if len(tweet_list) == 0 {
 		return
@@ -79,9 +113,9 @@ func drawScreen () {
 
 	// tweet
 	tweet := tweet_list[position]
-	print_tb(1, 2, termbox.ColorMagenta, termbox.ColorBlack, tweet.ScreenName)
-	print_tb(21, 2, termbox.ColorGreen, termbox.ColorBlack, tweet.UserName)
-	print_tb(1, 3, termbox.ColorWhite, termbox.ColorBlack, tweet.Text)
+	print_line(1, 2, termbox.ColorMagenta, termbox.ColorBlack, tweet.ScreenName)
+	print_line(21, 2, termbox.ColorGreen, termbox.ColorBlack, tweet.UserName)
+	print_wordwrap(tweet.Text, 50, 3)
 }
 
 func main () {
@@ -91,10 +125,12 @@ func main () {
 	key := make(chan termbox.Key)
 	done := make(chan bool)
 
-	log.Printf("[config_filename] %#v", *config_filename)
+	// log.Printf("[config_filename] %#v", *config_filename)
+	// httpstream.SetLogger(log.New(os.Stdout, "", log.Ltime|log.Lshortfile), "debug")
 
 	// configuration JSON
 	config_file, err := os.Open(*config_filename)
+	defer config_file.Close()
 
 	if err != nil {
 		log.Fatal(err)
@@ -146,7 +182,11 @@ func main () {
 		stream <- line
 	}))
 
+	client.SetMaxWait(5)
+
 	client.User(done)
+	// client.Sample(done)
+
 
 	go func () {
 		for {
@@ -158,6 +198,10 @@ func main () {
 	}()
 
 	drawScreen()
+
+	/* counter := 0
+	limit := 2 */
+
 loop:
 	for {
 		select {
@@ -167,13 +211,19 @@ loop:
 				break loop
 
 			case termbox.KeySpace:
-				if position < len(tweet_list) -1 {
+				if position < len(tweet_list)-1  {
 					position++
 					drawScreen()
 				}
 			}
 
 		case b := <-stream:
+			/* if counter >= limit {
+				break;
+			}
+
+			counter++ */
+
 			switch {
 			case bytes.HasPrefix(b, []byte(`{"created_at":`)):
 				tweet := httpstream.Tweet{}
@@ -192,6 +242,10 @@ loop:
 				tweet_list = append(tweet_list, &microTweet)
 				drawScreen()
 			}
+
+		case <-done:
+			termbox.Close()
+			log.Print("Client lost connnection.")
 		}
 	}
 }
