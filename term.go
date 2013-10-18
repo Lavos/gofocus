@@ -19,7 +19,7 @@ func (t *Terminal) ColorHline(y int, bg termbox.Attribute) {
 	}
 }
 
-func (t *Terminal) PrintWordwrap(msg string, width, x int) {
+func (t *Terminal) PrintWordwrap(msg string, width, y int) (int, int) {
 	working := []byte(msg)
 	lines := make([][]byte, 0)
 
@@ -49,18 +49,24 @@ work:
 		working = working[width:]
 	}
 
+	var lastx int
+
 	for index, line := range lines {
-		t.PrintLine(1, index+x, termbox.ColorWhite, termbox.ColorDefault, string(line))
+		lastx = t.PrintLine(1, index+y, termbox.ColorWhite, termbox.ColorDefault, string(line))
 	}
+
+	return lastx, len(lines)+y -1
 }
 
-func (t *Terminal) PrintLine(x, y int, fg, bg termbox.Attribute, msg string) {
+func (t *Terminal) PrintLine(x, y int, fg, bg termbox.Attribute, msg string) int {
 	var clean string = strings.Replace(msg, "\n", "", -1)
 
 	for _, c := range clean {
 		termbox.SetCell(x, y, c, fg, bg)
 		x++
 	}
+
+	return x
 }
 
 func (t *Terminal) DrawScreen(remaining int, tweet *MicroTweet, value []rune) {
@@ -89,8 +95,15 @@ func (t *Terminal) DrawScreen(remaining int, tweet *MicroTweet, value []rune) {
 	t.PrintWordwrap(tweet.Text, 50, 3)
 
 	// compose line
-	t.ColorHline(9, termbox.ColorRed)
-	t.PrintWordwrap(string(value), 50, 10)
+	t.ColorHline(9, termbox.ColorBlue)
+	t.PrintLine(1, 9, termbox.ColorBlack, termbox.ColorBlue, fmt.Sprintf("%v characters.", len(value)))
+
+	if len(value) > 0 {
+		lastx, lasty := t.PrintWordwrap(string(value), 50, 10)
+		termbox.SetCursor(lastx, lasty)
+	} else {
+		termbox.SetCursor(1, 10)
+	}
 }
 
 func (t *Terminal) Run(key chan termbox.Event){

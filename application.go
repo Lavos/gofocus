@@ -7,6 +7,7 @@ import (
 	"github.com/araddon/httpstream"
 	"encoding/json"
 	"log"
+	"fmt"
 )
 
 type MicroTweet struct {
@@ -33,6 +34,19 @@ type Application struct {
 }
 
 
+func (a *Application) UpdateScreen() {
+	var tweet MicroTweet
+	var remaining int
+	tp := &tweet
+
+	if len(a.tweet_list) > 0 {
+		tp = a.tweet_list[a.position]
+		remaining = len(a.tweet_list) - 1 - a.position
+	}
+
+	a.terminal.DrawScreen(remaining, tp, a.value)
+}
+
 func (a *Application) Run(){
 loop:
 	for {
@@ -46,24 +60,26 @@ loop:
 			case termbox.KeyBackspace, termbox.KeyBackspace2:
 				if len(a.value) > 0 {
 					a.value = a.value[:len(a.value)-1]
-					a.terminal.DrawScreen(len(a.tweet_list) - a.position, a.tweet_list[a.position], a.value)
 				}
 
 			case termbox.KeyPgdn:
 				if a.position < len(a.tweet_list)-1 {
 					a.position++
-					a.terminal.DrawScreen(len(a.tweet_list) - a.position, a.tweet_list[a.position], a.value)
 				}
 
 			case termbox.KeyPgup:
 				if a.position > 0 {
 					a.position--
-					a.terminal.DrawScreen(len(a.tweet_list) - a.position, a.tweet_list[a.position], a.value)
 				}
 
 			case termbox.KeySpace:
 				a.value = append(a.value, ' ')
-				a.terminal.DrawScreen(len(a.tweet_list) - a.position, a.tweet_list[a.position], a.value)
+
+			case termbox.KeyCtrlR:
+				if a.position <= len(a.tweet_list)-1 {
+					current_tweet := a.tweet_list[a.position]
+					a.value = []rune(fmt.Sprintf("@%v ", current_tweet.ScreenName))
+				}
 
 			case termbox.KeyEnter:
 				if len(a.value) > 0 {
@@ -81,8 +97,8 @@ loop:
 
 			default:
 				a.value = append(a.value, ev.Ch)
-				a.terminal.DrawScreen(len(a.tweet_list) - a.position, a.tweet_list[a.position], a.value)
 			}
+
 
 		case b := <-a.stream:
 			switch {
@@ -103,7 +119,6 @@ loop:
 				}
 
 				a.tweet_list = append(a.tweet_list, &microTweet)
-				a.terminal.DrawScreen(len(a.tweet_list) - a.position, a.tweet_list[a.position], a.value)
 			}
 
 		case <-a.done:
@@ -111,6 +126,8 @@ loop:
 			log.Print("Client lost connnection.")
 			break loop
 		}
+
+		a.UpdateScreen()
 	}
 }
 
