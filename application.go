@@ -3,7 +3,7 @@ package gofocus
 import (
 	"bytes"
 	"github.com/nsf/termbox-go"
-	oauth "github.com/araddon/goauth"
+	"github.com/mrjones/oauth"
 	"github.com/araddon/httpstream"
 	"encoding/json"
 	"log"
@@ -29,7 +29,7 @@ type Application struct {
 
 	terminal *Terminal
 
-	oc	*oauth.OAuthConsumer
+	oc	*oauth.Consumer
 	at	*oauth.AccessToken
 }
 
@@ -84,8 +84,8 @@ loop:
 			case termbox.KeyEnter:
 				if len(a.value) > 0 {
 					r, err := a.oc.Post("https://api.twitter.com/1.1/statuses/update.json",
-						oauth.Params{
-							&oauth.Pair{Key:"status", Value: string(a.value)},
+						map[string]string{
+							"status": string(a.value),
 						}, a.at)
 
 					log.Printf("response: %#v", r)
@@ -103,7 +103,6 @@ loop:
 		case b := <-a.stream:
 			switch {
 			case bytes.HasPrefix(b, []byte(`{"created_at":`)):
-				// log.Print("%#v", b)
 
 				tweet := httpstream.Tweet{}
 				err := json.Unmarshal(b, &tweet)
@@ -140,7 +139,7 @@ func NewApplication(c *Configuration) *Application {
 		terminal: NewTerminal(),
 	}
 
-	a.oc = &oauth.OAuthConsumer{
+	/* a.oc = &oauth.OAuthConsumer{
 		Service:          "twitter",
 		RequestTokenURL:  "http://twitter.com/oauth/request_token",
 		AccessTokenURL:   "http://twitter.com/oauth/access_token",
@@ -149,17 +148,22 @@ func NewApplication(c *Configuration) *Application {
 		ConsumerSecret:   c.ConsumerSecret,
 		CallBackURL:      "oob",
 		UserAgent:        "go/httpstream",
-	}
+	} */
+
+	a.oc = oauth.NewConsumer(
+		c.ConsumerKey,
+		c.ConsumerSecret,
+		oauth.ServiceProvider{
+			RequestTokenUrl:   "https://api.twitter.com/oauth/request_token",
+			AuthorizeTokenUrl: "https://api.twitter.com/oauth/authorize",
+			AccessTokenUrl:    "https://api.twitter.com/oauth/access_token",
+		})
 
 	httpstream.OauthCon = a.oc
 
 	a.at = &oauth.AccessToken{
-		Id:       "",
 		Token:    c.Token,
 		Secret:   c.TokenSecret,
-		UserRef:  c.UserName,
-		Verifier: "",
-		Service:  "twitter",
 	}
 
 	client := httpstream.NewOAuthClient(a.at, httpstream.OnlyTweetsFilter(func(line []byte) {
@@ -168,8 +172,8 @@ func NewApplication(c *Configuration) *Application {
 
 	client.SetMaxWait(5)
 
-	// client.Sample(a.done)
-	client.User(a.done)
+	client.Sample(a.done)
+	// client.User(a.done)
 
 	go a.terminal.Run(a.key)
 
