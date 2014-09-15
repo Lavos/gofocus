@@ -69,7 +69,7 @@ func (t *Terminal) PrintLine(x, y int, fg, bg termbox.Attribute, msg string) int
 	return x
 }
 
-func (t *Terminal) DrawScreen(remaining int, tweet *MicroTweet, value []rune, reply_mode bool) {
+func (t *Terminal) DrawScreen(remaining int, tweet *MicroTweet, value []rune, reply_mode bool, logs []*LogEvent) {
 	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 	defer termbox.Flush()
 
@@ -103,6 +103,16 @@ func (t *Terminal) DrawScreen(remaining int, tweet *MicroTweet, value []rune, re
 		termbox.SetCursor(lastx, lasty)
 	} else {
 		termbox.SetCursor(1, 10)
+	}
+
+	// log events
+	t.ColorHline(14, termbox.ColorRed)
+	t.PrintLine(1, 14, termbox.ColorWhite, termbox.ColorRed, "Log Events")
+
+	x := 15
+	for _, log := range logs {
+		t.PrintLine(1, x, termbox.ColorWhite, termbox.ColorBlack, log.String())
+		x++;
 	}
 }
 

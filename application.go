@@ -8,17 +8,18 @@ import (
 	"encoding/json"
 	"log"
 	"fmt"
-	// "time"
+	"time"
 )
 
 type MicroTweet struct {
 	Text, UserName, ScreenName, IDstr string
 }
 
-/* type LogEvent struct {
+type LogEvent struct {
 	Timestamp time.Time
-	Message, Type string
-} */
+	Message string
+	IsError bool
+}
 
 type Configuration struct {
 	UserName, ConsumerKey, ConsumerSecret, Token, TokenSecret string
@@ -34,7 +35,7 @@ type Application struct {
 	reply_mode bool
 	tweet_list []*MicroTweet
 
-	log []s
+	log []*LogEvent
 
 	terminal *Terminal
 
@@ -53,7 +54,7 @@ func (a *Application) UpdateScreen() {
 		remaining = len(a.tweet_list) - 1 - a.position
 	}
 
-	a.terminal.DrawScreen(remaining, tp, a.value, a.reply_mode)
+	a.terminal.DrawScreen(remaining, tp, a.value, a.reply_mode, a.log)
 }
 
 func (a *Application) InsertHandle() {
@@ -61,6 +62,22 @@ func (a *Application) InsertHandle() {
 		current_tweet := a.tweet_list[a.position]
 		a.value = []rune(fmt.Sprintf("@%v ", current_tweet.ScreenName))
 	}
+}
+
+func (a *Application) Log(m string, e bool) *LogEvent {
+	l := &LogEvent{
+		Timestamp: time.Now(),
+		Message: m,
+		IsError: e,
+	}
+
+	a.log = append(a.log, l)
+
+	if len(a.log) > 5 {
+		a.log = a.log[len(a.log)-5:]
+	}
+
+	return l
 }
 
 func (a *Application) Run(){
@@ -92,6 +109,7 @@ loop:
 
 			case termbox.KeySpace:
 				a.value = append(a.value, ' ')
+				a.Log("Pressed spacebar.", false)
 
 			case termbox.KeyCtrlN:
 				a.InsertHandle()
@@ -107,17 +125,23 @@ loop:
 
 			case termbox.KeyEnter:
 				if len(a.value) > 0 {
+					var message string
+
 					params := map[string]string{
 						"status": string(a.value),
 					}
 
 					if a.reply_mode {
 						params["in_reply_to_status_id"] = a.tweet_list[a.position].IDstr
+						message = "Reply posted."
+					} else {
+						message = "Tweet posted."
 					}
 
 					a.oc.Post("https://api.twitter.com/1.1/statuses/update.json", params, a.at)
 					a.value = a.value[len(a.value):]
 					a.reply_mode = false
+					a.Log(message, false)
 				}
 
 			default:
@@ -162,6 +186,7 @@ func NewApplication(c *Configuration) *Application {
 		key: make(chan termbox.Event),
 		done: make(chan bool),
 		value: make([]rune, 0),
+		log: make([]*LogEvent, 0),
 		terminal: NewTerminal(),
 	}
 
@@ -193,4 +218,9 @@ func NewApplication(c *Configuration) *Application {
 	go a.terminal.Run(a.key)
 
 	return a
+}
+
+func (l *LogEvent) String() string {
+	// Mon Jan 2 15:04:05 -0700 MST 2006
+	return fmt.Sprintf("%s - %s", l.Timestamp.Format("20060102.15:04:05.000"), l.Message)
 }
