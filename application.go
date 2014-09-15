@@ -8,11 +8,17 @@ import (
 	"encoding/json"
 	"log"
 	"fmt"
+	// "time"
 )
 
 type MicroTweet struct {
-	Text, UserName, ScreenName string
+	Text, UserName, ScreenName, IDstr string
 }
+
+/* type LogEvent struct {
+	Timestamp time.Time
+	Message, Type string
+} */
 
 type Configuration struct {
 	UserName, ConsumerKey, ConsumerSecret, Token, TokenSecret string
@@ -25,7 +31,10 @@ type Application struct {
 	value []rune
 
 	position int
+	reply_mode bool
 	tweet_list []*MicroTweet
+
+	log []s
 
 	terminal *Terminal
 
@@ -44,7 +53,14 @@ func (a *Application) UpdateScreen() {
 		remaining = len(a.tweet_list) - 1 - a.position
 	}
 
-	a.terminal.DrawScreen(remaining, tp, a.value)
+	a.terminal.DrawScreen(remaining, tp, a.value, a.reply_mode)
+}
+
+func (a *Application) InsertHandle() {
+	if a.position <= len(a.tweet_list)-1 {
+		current_tweet := a.tweet_list[a.position]
+		a.value = []rune(fmt.Sprintf("@%v ", current_tweet.ScreenName))
+	}
 }
 
 func (a *Application) Run(){
@@ -65,34 +81,43 @@ loop:
 			case termbox.KeyPgdn:
 				if a.position < len(a.tweet_list)-1 {
 					a.position++
+					a.reply_mode = false
 				}
 
 			case termbox.KeyPgup:
 				if a.position > 0 {
 					a.position--
+					a.reply_mode = false
 				}
 
 			case termbox.KeySpace:
 				a.value = append(a.value, ' ')
 
-			case termbox.KeyCtrlR:
-				if a.position <= len(a.tweet_list)-1 {
-					current_tweet := a.tweet_list[a.position]
-					a.value = []rune(fmt.Sprintf("@%v ", current_tweet.ScreenName))
+			case termbox.KeyCtrlN:
+				a.InsertHandle()
+
+			case termbox.KeyCtrlR: // toggle reply mode
+				if a.reply_mode {
+					a.reply_mode = false
+					a.value = a.value[len(a.value):]
+				} else {
+					a.InsertHandle()
+					a.reply_mode = true
 				}
 
 			case termbox.KeyEnter:
 				if len(a.value) > 0 {
-					r, err := a.oc.Post("https://api.twitter.com/1.1/statuses/update.json",
-						map[string]string{
-							"status": string(a.value),
-						}, a.at)
+					params := map[string]string{
+						"status": string(a.value),
+					}
 
-					log.Printf("response: %#v", r)
-					log.Printf("err: %#v", err)
-					log.Printf("value: %#v", string(a.value))
+					if a.reply_mode {
+						params["in_reply_to_status_id"] = a.tweet_list[a.position].IDstr
+					}
 
+					a.oc.Post("https://api.twitter.com/1.1/statuses/update.json", params, a.at)
 					a.value = a.value[len(a.value):]
+					a.reply_mode = false
 				}
 
 			default:
@@ -112,6 +137,7 @@ loop:
 				}
 
 				microTweet := MicroTweet{
+					IDstr:		tweet.Id_str,
 					Text:       tweet.Text,
 					UserName:   tweet.User.Name,
 					ScreenName: tweet.User.ScreenName,
@@ -139,17 +165,6 @@ func NewApplication(c *Configuration) *Application {
 		terminal: NewTerminal(),
 	}
 
-	/* a.oc = &oauth.OAuthConsumer{
-		Service:          "twitter",
-		RequestTokenURL:  "http://twitter.com/oauth/request_token",
-		AccessTokenURL:   "http://twitter.com/oauth/access_token",
-		AuthorizationURL: "http://twitter.com/oauth/authorize",
-		ConsumerKey:      c.ConsumerKey,
-		ConsumerSecret:   c.ConsumerSecret,
-		CallBackURL:      "oob",
-		UserAgent:        "go/httpstream",
-	} */
-
 	a.oc = oauth.NewConsumer(
 		c.ConsumerKey,
 		c.ConsumerSecret,
@@ -172,8 +187,8 @@ func NewApplication(c *Configuration) *Application {
 
 	client.SetMaxWait(5)
 
-	client.Sample(a.done)
-	// client.User(a.done)
+	// client.Sample(a.done)
+	client.User(a.done)
 
 	go a.terminal.Run(a.key)
 

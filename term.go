@@ -69,7 +69,7 @@ func (t *Terminal) PrintLine(x, y int, fg, bg termbox.Attribute, msg string) int
 	return x
 }
 
-func (t *Terminal) DrawScreen(remaining int, tweet *MicroTweet, value []rune) {
+func (t *Terminal) DrawScreen(remaining int, tweet *MicroTweet, value []rune, reply_mode bool) {
 	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 	defer termbox.Flush()
 
@@ -96,7 +96,7 @@ func (t *Terminal) DrawScreen(remaining int, tweet *MicroTweet, value []rune) {
 
 	// compose line
 	t.ColorHline(9, termbox.ColorBlue)
-	t.PrintLine(1, 9, termbox.ColorBlack, termbox.ColorBlue, fmt.Sprintf("%v characters.", len(value)))
+	t.PrintLine(1, 9, termbox.ColorWhite, termbox.ColorBlue, fmt.Sprintf("%v characters. Reply: %v", len(value), reply_mode))
 
 	if len(value) > 0 {
 		lastx, lasty := t.PrintWordwrap(string(value), 50, 10)
